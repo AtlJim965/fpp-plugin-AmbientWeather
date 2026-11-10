@@ -1,0 +1,18 @@
+{
+    "repoName": "fpp-plugin-AmbientWeather",
+    "name": "Ambient Weather Display",
+    "author": "AtlJim965",
+    "description": "Shows live temperature and wind from an Ambient Weather station on a Pixel Overlay Model (LED matrix).",
+    "homeURL": "https://github.com/AtlJim965/fpp-plugin-AmbientWeather",
+    "srcURL": "https://github.com/AtlJim965/fpp-plugin-AmbientWeather.git",
+    "bugURL": "https://github.com/AtlJim965/fpp-plugin-AmbientWeather/issues",
+    "allowUpdates": 1,
+    "versions": [
+        {
+            "minFPPVersion": "7.0",
+            "maxFPPVersion": "0",
+            "branch": "main",
+            "sha": ""
+        }
+    ]
+}
