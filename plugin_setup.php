@@ -18,6 +18,13 @@ $awDefaults = array(
     "show_gust"       => false,
     "message"         => "{temp}  {wind}",
     "loop_interval"   => 60,
+    "border_enabled"       => false,
+    "border_thickness"     => 3,
+    "border_palette"       => "Christmas",
+    "border_custom_colors" => "#FF0000,#FFFFFF,#00C83C",
+    "border_stripe"        => 6,
+    "border_chase"         => false,
+    "chase_speed"          => 4,
 );
 
 function awLoad($file, $defaults) {
@@ -47,15 +54,19 @@ if ($_SERVER["REQUEST_METHOD"] === "POST" && isset($_POST["aw_action"])) {
 
     if ($action === "save" || $action === "save_show") {
         foreach (array("api_key", "application_key", "station_mac", "fpp_host",
-                       "model_name", "font", "color", "position", "message") as $k) {
+                       "model_name", "font", "color", "position", "message",
+                       "border_palette", "border_custom_colors") as $k) {
             if (isset($_POST[$k]))
                 $cfg[$k] = trim($_POST[$k]);
         }
-        foreach (array("font_size", "scroll_speed", "loop_interval") as $k) {
+        foreach (array("font_size", "scroll_speed", "loop_interval",
+                       "border_thickness", "border_stripe", "chase_speed") as $k) {
             if (isset($_POST[$k]))
                 $cfg[$k] = intval($_POST[$k]);
         }
-        $cfg["show_gust"] = isset($_POST["show_gust"]);
+        $cfg["show_gust"]      = isset($_POST["show_gust"]);
+        $cfg["border_enabled"] = isset($_POST["border_enabled"]);
+        $cfg["border_chase"]   = isset($_POST["border_chase"]);
 
         if (@file_put_contents($awConfigFile, json_encode($cfg, JSON_PRETTY_PRINT)) === false) {
             $notice = "<span style='color:red'>Could not write $awConfigFile</span>";
@@ -102,6 +113,11 @@ function awSelectOrText($name, $value, $options) {
         printf("<option value='%s'%s>%s</option>", h($o), $o == $value ? " selected" : "", h($o));
     echo "</select>";
 }
+
+$palettes = array("Christmas" => "Christmas (red, white, green)",
+                  "Red & Green" => "Red & Green", "Candy Cane" => "Candy Cane (red & white)",
+                  "Winter" => "Winter (blues & white)", "Gold & Silver" => "Gold & Silver",
+                  "Rainbow" => "Rainbow", "Custom" => "Custom (colors below)");
 
 $positions = array(
     "Center" => "Center (no scrolling)",
@@ -157,6 +173,34 @@ $positions = array(
     <td><input type="number" name="loop_interval" value="<?= h($cfg["loop_interval"]) ?>" min="30" max="3600">
     <small>seconds, used by <code>--loop</code> with no number</small></td></tr>
 
+<tr><th colspan="2"><h3>Christmas border</h3>
+    <small>With the border on, the message is drawn in the matrix's pixel font and sized
+    automatically to fit inside the border (Font, Font size, Position and Scroll speed
+    above are not used). Put <code>|</code> in the message to start a new line, e.g.
+    <code>The weather right now is:|{temp}  {wind}</code></small></th></tr>
+<tr><td>Show border</td>
+    <td><input type="checkbox" name="border_enabled" <?= $cfg["border_enabled"] ? "checked" : "" ?>></td></tr>
+<tr><td>Border colors</td>
+    <td><select name="border_palette">
+    <?php foreach ($palettes as $k => $label)
+        printf("<option value='%s'%s>%s</option>", h($k), $cfg["border_palette"] == $k ? " selected" : "", h($label)); ?>
+    </select></td></tr>
+<tr><td>Custom colors</td>
+    <td><input type="text" name="border_custom_colors" value="<?= h($cfg["border_custom_colors"]) ?>" size="40">
+    <small>comma-separated, used when Border colors is Custom</small></td></tr>
+<tr><td>Border thickness</td>
+    <td><input type="number" name="border_thickness" value="<?= h($cfg["border_thickness"]) ?>" min="1" max="8">
+    <small>pixels</small></td></tr>
+<tr><td>Stripe length</td>
+    <td><input type="number" name="border_stripe" value="<?= h($cfg["border_stripe"]) ?>" min="1" max="32">
+    <small>pixels per color</small></td></tr>
+<tr><td>Chase</td>
+    <td><input type="checkbox" name="border_chase" <?= $cfg["border_chase"] ? "checked" : "" ?>>
+    <small>stripes move around the edge (only while running with <code>--loop</code>)</small></td></tr>
+<tr><td>Chase speed</td>
+    <td><input type="number" name="chase_speed" value="<?= h($cfg["chase_speed"]) ?>" min="1" max="10">
+    <small>steps per second</small></td></tr>
+
 <tr><th colspan="2"><h3>Advanced</h3></th></tr>
 <tr><td>FPP address</td>
     <td><input type="text" name="fpp_host" value="<?= h($cfg["fpp_host"]) ?>" size="30">
@@ -179,7 +223,8 @@ $positions = array(
 <li><i>(none)</i> &ndash; update the matrix once</li>
 <li><code>--loop 60</code> &ndash; keep updating every 60 seconds</li>
 <li><code>--off</code> &ndash; clear the text and turn the overlay off</li>
-<li><code>--text "The weather right now is:"</code> &ndash; use different wording for this entry only</li>
+<li><code>--text "The weather right now is:"</code> &ndash; use different wording for this entry only
+    (with the border on, <code>|</code> starts a new line)</li>
 </ul>
 </fieldset>
 </div>
