@@ -6,6 +6,7 @@
     "homeURL": "https://github.com/AtlJim965/fpp-plugin-AmbientWeather",
     "srcURL": "https://github.com/AtlJim965/fpp-plugin-AmbientWeather.git",
     "bugURL": "https://github.com/AtlJim965/fpp-plugin-AmbientWeather/issues",
+    "iconURL": "https://raw.githubusercontent.com/AtlJim965/fpp-plugin-AmbientWeather/main/icon.png",
     "allowUpdates": 1,
     "releaseNotesStyle": "gitHistory",
     "dependencies": {
