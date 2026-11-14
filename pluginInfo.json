@@ -37,7 +37,7 @@
         "sends": [
             {
                 "to": "rt.ambientweather.net",
-                "what": "Your Ambient Weather API Key and Application Key, to read your own station's latest temperature and wind. No show data.",
+                "what": "Your Ambient Weather API keys, to read your own station's latest readings",
                 "why": "to show your station's weather on the matrix",
                 "alwaysOn": false
             }
@@ -46,9 +46,12 @@
         "sensors": [],
         "remoteAccess": "none",
         "systemChanges": [
-            "Adds AmbientWeather.sh to FPP's Scripts folder (removed on uninstall)"
+            {
+                "kind": "core-settings",
+                "what": "Adds AmbientWeather.sh to FPP's Scripts folder (removed on uninstall)"
+            }
         ],
         "closedCode": false,
-        "other": "The plugin author keeps no data. Your keys are stored only on your FPP, in config/plugin.fpp-plugin-AmbientWeather.json."
+        "other": "The plugin author keeps no data. Your keys stay on your FPP, in plugindata (readable only by FPP's user). Uninstall removes them, the script, pictures and log."
     }
 }

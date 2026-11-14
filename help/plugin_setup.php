@@ -18,8 +18,10 @@
   <h3>Ambient Weather account</h3>
   <dl>
     <dt>API Key, Application Key</dt>
-    <dd>From ambientweather.net &gt; Account &gt; API Keys. "401 Unauthorized"
-      means one is wrong or they are swapped.</dd>
+    <dd>From ambientweather.net &gt; Account &gt; API Keys. Once saved they
+      aren't shown again; leave the boxes blank to keep them, or type a new
+      key to replace one. "401 Unauthorized" means one is wrong or they are
+      swapped.</dd>
     <dt>Station MAC</dt>
     <dd>Only needed if your account has more than one station. Blank uses the
       first one.</dd>

@@ -46,16 +46,16 @@ running.
 
 ## Files it writes and what it changes
 
-* `config/plugin.fpp-plugin-AmbientWeather.json`: your settings, including
-  your Ambient Weather keys (readable only by FPP's user)
+* `config/plugin.fpp-plugin-AmbientWeather`: your settings (no keys)
 * `scripts/AmbientWeather.sh`: the **Run Script** entry, created on install
-* `plugindata/fpp-plugin-AmbientWeather/`: the overlay model's state from
-  before the plugin first drew on it
+* `plugindata/fpp-plugin-AmbientWeather/`: your Ambient Weather keys
+  (`credentials.json`, readable only by FPP's user) and the overlay model's
+  state from before the plugin first drew on it
 * `images/ambient_weather_*.png`: border-mode pictures, which FPP's overlay
   Image effect reads from its images folder. Old ones are deleted
   automatically.
-* `logs/plugin-fpp-plugin-AmbientWeather.log`: the plugin's log (kept under
-  about 1 MB)
+* `logs/plugin-fpp-plugin-AmbientWeather.log`: the plugin's log (FPP rotates
+  it)
 * Your overlay model is switched on while the plugin draws on it.
   `--off` (or **Turn Display Off**) stops the display and puts the model back
   the way it was.
@@ -64,9 +64,10 @@ Updating restarts a running `--loop` display on the new code, with the same
 arguments.
 
 Uninstalling stops the display, puts the model back, and removes the script,
-pictures, saved data and log. Your settings file is kept, so a reinstall
-remembers your keys; delete `config/plugin.fpp-plugin-AmbientWeather.json` to
-remove them too. Uninstalling can't edit your playlists or schedules, so
+pictures, your keys, saved data and log. Your settings file is kept, so a
+reinstall remembers your settings (you enter the keys again); delete
+`config/plugin.fpp-plugin-AmbientWeather` to remove them too. A **Reinstall**
+(FPP 10.4 and newer) keeps the keys as well. Uninstalling can't edit your playlists or schedules, so
 remove any **Run Script > AmbientWeather.sh** entries first.
 
 ## More

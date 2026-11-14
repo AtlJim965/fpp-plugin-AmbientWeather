@@ -1,8 +1,15 @@
 <?php
 // fpp-plugin-AmbientWeather settings page
+// Settings: config/plugin.fpp-plugin-AmbientWeather (FPP's plugin settings
+// format). Ambient Weather keys: plugindata/fpp-plugin-AmbientWeather/
+// credentials.json (0600) - never printed back into the page.
 $awPlugin     = "fpp-plugin-AmbientWeather";
-$awConfigFile = "/home/fpp/media/config/plugin." . $awPlugin . ".json";
-$awScript     = "/home/fpp/media/plugins/" . $awPlugin . "/ambient_weather.py";
+$awMedia      = (isset($settings['mediaDirectory']) && $settings['mediaDirectory'] !== '')
+                ? $settings['mediaDirectory'] : (getenv("MEDIADIR") ?: "/home/fpp/media");
+$awConfigFile = "$awMedia/config/plugin.$awPlugin";
+$awDataDir    = "$awMedia/plugindata/$awPlugin";
+$awCredFile   = "$awDataDir/credentials.json";
+$awScript     = dirname(__FILE__) . "/ambient_weather.py";
 
 $awDefaults = array(
     "api_key"         => "",
@@ -35,14 +42,39 @@ $awDefaults = array(
     "chase_speed"          => 4,
 );
 
+// FPP's plugin settings format: key = "value" lines
 function awLoad($file, $defaults) {
     $cfg = $defaults;
-    if (file_exists($file)) {
-        $saved = json_decode(file_get_contents($file), true);
-        if (is_array($saved))
-            $cfg = array_merge($cfg, $saved);
-    }
+    if (file_exists($file))
+        foreach (file($file, FILE_IGNORE_NEW_LINES) as $line)
+            if (preg_match('/^\s*([^=\s#]+)\s*=\s*"?(.*?)"?\s*$/', $line, $m) && array_key_exists($m[1], $defaults))
+                $cfg[$m[1]] = $m[2];
+    foreach (array("show_gust", "border_enabled", "border_chase") as $k)
+        $cfg[$k] = in_array($cfg[$k], array(true, 1, "1", "true", "on"), true);
     return $cfg;
+}
+
+function awSaveSetting($key, $value, $plugin, $file) {
+    if (is_bool($value)) $value = $value ? "1" : "0";
+    $value = str_replace('"', "'", (string)$value);
+    if (function_exists('WriteSettingToFile')) {        // FPP's own helper
+        WriteSettingToFile($key, $value, $plugin);
+        return;
+    }
+    // same format, for running the page outside FPP
+    $lines = file_exists($file) ? file($file, FILE_IGNORE_NEW_LINES) : array();
+    $out = array(); $done = false;
+    foreach ($lines as $l) {
+        if (preg_match('/^\s*' . preg_quote($key, '/') . '\s*=/', $l)) { $out[] = "$key = \"$value\""; $done = true; }
+        else $out[] = $l;
+    }
+    if (!$done) $out[] = "$key = \"$value\"";
+    file_put_contents($file, implode("\n", $out) . "\n");
+}
+
+function awLoadCreds($file) {
+    $c = file_exists($file) ? json_decode(file_get_contents($file), true) : null;
+    return is_array($c) ? $c : array();
 }
 
 function awGetJson($url) {
@@ -54,6 +86,7 @@ function awGetJson($url) {
 function h($s) { return htmlspecialchars((string)$s, ENT_QUOTES); }
 
 $cfg    = awLoad($awConfigFile, $awDefaults);
+$creds  = awLoadCreds($awCredFile);
 $notice = "";
 $output = "";
 
@@ -61,7 +94,7 @@ if ($_SERVER["REQUEST_METHOD"] === "POST" && isset($_POST["aw_action"])) {
     $action = $_POST["aw_action"];
 
     if ($action === "save" || $action === "save_show") {
-        foreach (array("api_key", "application_key", "station_mac", "fpp_host",
+        foreach (array("station_mac", "fpp_host",
                        "model_name", "font", "color", "position", "message",
                        "border_palette", "border_custom_colors",
                        "text_color_mode", "text_palette", "text_color2", "text_color3",
@@ -78,13 +111,23 @@ if ($_SERVER["REQUEST_METHOD"] === "POST" && isset($_POST["aw_action"])) {
         $cfg["show_gust"]      = isset($_POST["show_gust"]);
         $cfg["border_enabled"] = isset($_POST["border_enabled"]);
         $cfg["border_chase"]   = isset($_POST["border_chase"]);
+        foreach ($awDefaults as $k => $v)
+            if ($k !== "api_key" && $k !== "application_key")
+                awSaveSetting($k, $cfg[$k], $awPlugin, $awConfigFile);
 
-        if (@file_put_contents($awConfigFile, json_encode($cfg, JSON_PRETTY_PRINT)) === false) {
-            $notice = "<span style='color:red'>Could not write $awConfigFile</span>";
-        } else {
-            @chmod($awConfigFile, 0600);
-            $notice = "<span style='color:green'>Settings saved.</span>";
+        // keys: only replaced when something new is typed in
+        $ok = true;
+        $newCreds = $creds;
+        if (isset($_POST["api_key"]) && trim($_POST["api_key"]) !== "") $newCreds["APIKey"] = trim($_POST["api_key"]);
+        if (isset($_POST["application_key"]) && trim($_POST["application_key"]) !== "") $newCreds["ApplicationKey"] = trim($_POST["application_key"]);
+        if ($newCreds !== $creds) {
+            @mkdir($awDataDir, 0775, true);
+            $ok = @file_put_contents($awCredFile, json_encode($newCreds)) !== false;
+            @chmod($awCredFile, 0600);
+            $creds = $newCreds;
         }
+        $notice = $ok ? array("text-success", "Settings saved.")
+                      : array("text-danger", "Couldn't save the Ambient Weather keys.");
     }
 
     if ($action === "save_show") {
@@ -114,12 +157,12 @@ if (is_array($f)) {
 
 function awSelectOrText($name, $value, $options) {
     if (count($options) == 0) {
-        printf("<input type='text' name='%s' value='%s' size='30'>", h($name), h($value));
+        printf("<input type='text' class='form-control' name='%s' value='%s'>", h($name), h($value));
         return;
     }
     if (!in_array($value, $options))
         array_unshift($options, $value);
-    printf("<select name='%s'>", h($name));
+    printf("<select class='form-select' name='%s'>", h($name));
     foreach ($options as $o)
         printf("<option value='%s'%s>%s</option>", h($o), $o == $value ? " selected" : "", h($o));
     echo "</select>";
@@ -159,25 +202,28 @@ $positions = array(
 <fieldset>
 <legend>Ambient Weather Display</legend>
 
-<?php if ($notice) echo "<p>$notice</p>"; ?>
+<?php if ($notice) printf("<p class='%s'>%s</p>", $notice[0], h($notice[1])); ?>
 
 <form method="post">
-<table class="table table-sm">
+<div class="table-responsive">
+<table class="table table-sm align-middle">
 <tr><th colspan="2"><h3>Ambient Weather account</h3>
     <small>Create both keys at
     <a href="https://ambientweather.net/account" target="_blank">ambientweather.net/account</a> (API Keys).</small></th></tr>
 <tr><td>API Key</td>
-    <td><input type="password" name="api_key" value="<?= h($cfg["api_key"]) ?>" size="70" autocomplete="off"></td></tr>
+    <td><input type="password" class="form-control" name="api_key" value="" autocomplete="new-password"
+         placeholder="<?= empty($creds["APIKey"]) ? "paste your API Key" : "saved - leave blank to keep it" ?>"></td></tr>
 <tr><td>Application Key</td>
-    <td><input type="password" name="application_key" value="<?= h($cfg["application_key"]) ?>" size="70" autocomplete="off"></td></tr>
+    <td><input type="password" class="form-control" name="application_key" value="" autocomplete="new-password"
+         placeholder="<?= empty($creds["ApplicationKey"]) ? "paste your Application Key" : "saved - leave blank to keep it" ?>"></td></tr>
 <tr><td>Station MAC (optional)</td>
-    <td><input type="text" name="station_mac" value="<?= h($cfg["station_mac"]) ?>" size="20">
+    <td><input type="text" class="form-control" name="station_mac" value="<?= h($cfg["station_mac"]) ?>">
     <small>Blank = first station on your account</small></td></tr>
 
 <tr><th colspan="2"><h3>Matrix display</h3></th></tr>
 <tr><td>Overlay Model</td><td><?php awSelectOrText("model_name", $cfg["model_name"], $models); ?></td></tr>
 <tr><td>Message</td>
-    <td><input type="text" name="message" value="<?= h($cfg["message"]) ?>" size="60"><br>
+    <td><input type="text" class="form-control" name="message" value="<?= h($cfg["message"]) ?>"><br>
     <small><code>{temp}</code> and <code>{wind}</code> are replaced with live readings,
     e.g. <code>The weather right now is: {temp}  {wind}</code></small></td></tr>
 <tr><td>Show wind gust</td>
@@ -249,7 +295,7 @@ awColors();
         printf("<option value='%s'%s>%s</option>", h($k), $cfg["border_palette"] == $k ? " selected" : "", h($label)); ?>
     </select></td></tr>
 <tr><td>Custom colors</td>
-    <td><input type="text" name="border_custom_colors" value="<?= h($cfg["border_custom_colors"]) ?>" size="40">
+    <td><input type="text" class="form-control" name="border_custom_colors" value="<?= h($cfg["border_custom_colors"]) ?>">
     <small>comma-separated, used when Border colors is Custom</small></td></tr>
 <tr><td>Border thickness</td>
     <td><input type="number" name="border_thickness" value="<?= h($cfg["border_thickness"]) ?>" min="1" max="8">
@@ -266,18 +312,19 @@ awColors();
 
 <tr><th colspan="2"><h3>Advanced</h3></th></tr>
 <tr><td>FPP address</td>
-    <td><input type="text" name="fpp_host" value="<?= h($cfg["fpp_host"]) ?>" size="30">
+    <td><input type="text" class="form-control" name="fpp_host" value="<?= h($cfg["fpp_host"]) ?>">
     <small>Leave as http://127.0.0.1</small></td></tr>
 </table>
+</div>
 
-<button type="submit" name="aw_action" value="save" class="buttons btn-success">Save</button>
-<button type="submit" name="aw_action" value="save_show" class="buttons">Save &amp; Show Now</button>
-<button type="submit" name="aw_action" value="off" class="buttons">Turn Display Off</button>
+<button type="submit" name="aw_action" value="save" class="btn btn-success">Save</button>
+<button type="submit" name="aw_action" value="save_show" class="btn btn-primary">Save &amp; Show Now</button>
+<button type="submit" name="aw_action" value="off" class="btn btn-outline-secondary">Turn Display Off</button>
 </form>
 
 <?php if ($output !== "" && $output !== null): ?>
 <h3>Result</h3>
-<pre style="background:#222;color:#0f0;padding:8px;white-space:pre-wrap"><?= h($output) ?></pre>
+<pre class="bg-body-tertiary border rounded p-2 text-wrap"><?= h($output) ?></pre>
 <?php endif; ?>
 
 <h3>Using it in a playlist or the scheduler</h3>

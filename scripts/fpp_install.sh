@@ -16,11 +16,17 @@ OWNER="$(stat -c '%U:%G' "$MEDIADIR" 2>/dev/null || echo fpp:fpp)"
 DATADIR="$MEDIADIR/plugindata/fpp-plugin-AmbientWeather"
 SCRIPTSDIR="$MEDIADIR/scripts"
 
-# our data folder (the overlay model's state from before the plugin first
-# drew on it), owned by the media folder's owner so the settings page (web
+# our data folder (your Ambient Weather keys, and the overlay model's state
+# from before the plugin first drew on it), owned by the media folder's owner so the settings page (web
 # user) can use it too
 mkdir -p "$DATADIR"
+# settings from older versions: config/plugin.fpp-plugin-AmbientWeather.json
+# (keys included) -> FPP's plugin settings file + plugindata/credentials.json
+MEDIADIR="$MEDIADIR" LOGDIR="$LOGDIR" /usr/bin/python3 "$PLUGINDIR/ambient_weather.py" \
+    --migrate >/dev/null 2>&1 || true
 chown -R "$OWNER" "$DATADIR" 2>/dev/null || true
+chmod 750 "$DATADIR" 2>/dev/null || true
+[ -f "$DATADIR/credentials.json" ] && chmod 600 "$DATADIR/credentials.json"
 chmod 755 "$PLUGINDIR/ambient_weather.py" "$PLUGINDIR"/scripts/*.sh 2>/dev/null || true
 
 # AmbientWeather.sh in FPP's Scripts folder, so "Run Script" in playlists and

@@ -21,6 +21,16 @@ heading when the change is released.
 
 ### Changed
 
+* Your Ambient Weather keys are now kept in the plugin's private data folder
+  (readable only by FPP's user) instead of the settings file, and the
+  settings page no longer shows them again once saved. Settings move to
+  FPP's standard plugin settings file. Both happen automatically on update.
+* The log is left to FPP to rotate.
+* **Turn Display Off**, `--off` and uninstall leave the overlay model alone
+  when the plugin isn't using it, so they can't switch off a matrix another
+  plugin is showing on.
+* The settings page follows FPP's light and dark themes and fits phone
+  screens.
 * **Turn Display Off** / `--off` now also stops a display running with
   `--loop`, and puts the overlay model back the way it was before the plugin
   first used it (instead of always switching it off).

@@ -54,9 +54,10 @@ arguments.
 
 **Uninstall:** use **Uninstall** in the Plugin Manager. It stops a running
 display, puts the overlay model back the way it was, and removes
-`AmbientWeather.sh`, the border pictures, saved data and log. Your settings
-file is kept, so a reinstall remembers your keys; delete
-`config/plugin.fpp-plugin-AmbientWeather.json` to remove them too.
+`AmbientWeather.sh`, the border pictures, your keys, saved data and log.
+Your settings file is kept, so a reinstall remembers your settings (you enter
+the keys again); delete `config/plugin.fpp-plugin-AmbientWeather` to remove
+them too. A **Reinstall** (FPP 10.4 and newer) keeps the keys as well.
 
 Uninstalling can't edit your playlists or schedules. Remove any **Run Script
 > AmbientWeather.sh** entries from them first.
@@ -70,7 +71,9 @@ short version of this section. Nothing is saved until you press **Save** or
 ### Ambient Weather account
 
 * **API Key** and **Application Key**: from ambientweather.net > Account >
-  API Keys. They are shown as dots and stored only on the FPP.
+  API Keys. They are stored only on the FPP, in the plugin's private data
+  folder, and never shown again: once saved, the boxes say *saved - leave
+  blank to keep it*. Type a new key to replace one.
 * **Station MAC (optional)**: if your account has more than one station, the
   MAC address of the one to use (shown on ambientweather.net under Devices).
   Blank uses the first station.
@@ -153,15 +156,16 @@ restarts.
 
 The plugin writes these files in FPP's media folder:
 
-* `config/plugin.fpp-plugin-AmbientWeather.json`: settings and keys (readable
-  only by FPP's user). Kept when the plugin is uninstalled.
+* `config/plugin.fpp-plugin-AmbientWeather`: settings (no keys), in FPP's
+  plugin settings format. Kept when the plugin is uninstalled.
+* `plugindata/fpp-plugin-AmbientWeather/credentials.json`: your Ambient
+  Weather keys, readable only by FPP's user.
 * `scripts/AmbientWeather.sh`: the Run Script entry.
 * `plugindata/fpp-plugin-AmbientWeather/model_state.json`: whether the overlay
   model was on before the plugin first switched it on, so it can be put back.
 * `images/ambient_weather_*.png`: border-mode pictures for FPP's overlay Image
   effect. Older ones are deleted after a few seconds.
-* `logs/plugin-fpp-plugin-AmbientWeather.log`: the log. Over about 512 KB it
-  is renamed to `.log.1`, replacing the previous one.
+* `logs/plugin-fpp-plugin-AmbientWeather.log`: the log. FPP rotates it.
 
 On each update it sends one request to Ambient Weather's server
 (`rt.ambientweather.net`) with your API Key and Application Key, and gets your

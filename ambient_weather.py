@@ -20,6 +20,7 @@ override them for a single run:
 
 import json
 import os
+import re
 import signal
 import struct
 import sys
@@ -32,14 +33,15 @@ import zlib
 
 PLUGIN_NAME = "fpp-plugin-AmbientWeather"
 MEDIA_DIR = os.environ.get("MEDIADIR", "/home/fpp/media")
-CONFIG_FILE = f"{MEDIA_DIR}/config/plugin.{PLUGIN_NAME}.json"
+CONFIG_FILE = f"{MEDIA_DIR}/config/plugin.{PLUGIN_NAME}"           # FPP format
+OLD_CONFIG_FILE = f"{MEDIA_DIR}/config/plugin.{PLUGIN_NAME}.json"  # before Nov 2026
 IMAGES_DIR = f"{MEDIA_DIR}/images"
 IMAGE_PREFIX = "ambient_weather_"
 DATA_DIR = f"{MEDIA_DIR}/plugindata/{PLUGIN_NAME}"
 MODEL_STATE_FILE = os.path.join(DATA_DIR, "model_state.json")
+CREDENTIALS_FILE = os.path.join(DATA_DIR, "credentials.json")       # 0600
 LOG_DIR = os.environ.get("LOGDIR", f"{MEDIA_DIR}/logs")
 LOG_FILE = os.path.join(LOG_DIR, f"plugin-{PLUGIN_NAME}.log")
-LOG_MAX_BYTES = 512 * 1024
 SCRIPT = os.path.abspath(__file__)
 
 DEFAULTS = {
@@ -108,13 +110,12 @@ cfg = dict(DEFAULTS)
 
 def log(msg):
     """Print (shown on the settings page / FPP's script output) and append to
-    logs/plugin-fpp-plugin-AmbientWeather.log (kept under ~1 MB)."""
+    logs/plugin-fpp-plugin-AmbientWeather.log. The file is opened for each
+    line so it follows FPP's log rotation (FPP rotates plugin logs)."""
     line = f"{time.strftime('%Y-%m-%d %H:%M:%S')} [pid {os.getpid()}] {msg}"
     print(time.strftime("%Y-%m-%d %H:%M:%S"), msg, flush=True)
     try:
         if os.path.isdir(LOG_DIR):
-            if os.path.exists(LOG_FILE) and os.path.getsize(LOG_FILE) > LOG_MAX_BYTES:
-                os.replace(LOG_FILE, LOG_FILE + ".1")
             new = not os.path.exists(LOG_FILE)
             with open(LOG_FILE, "a") as f:
                 f.write(line + "\n")
@@ -128,16 +129,74 @@ def as_bool(v):
     return v in (True, 1, "1", "true", "on", "True")
 
 
+CREDENTIAL_KEYS = {"api_key": "APIKey", "application_key": "ApplicationKey"}
+
+
+def read_plugin_settings(path):
+    """FPP's plugin settings format: key = "value" lines."""
+    out = {}
+    try:
+        with open(path) as f:
+            for line in f:
+                m = re.match(r'\s*([^=\s#]+)\s*=\s*"?(.*?)"?\s*$', line)
+                if m:
+                    out[m.group(1)] = m.group(2)
+    except FileNotFoundError:
+        pass
+    return out
+
+
+def write_plugin_settings(path, values):
+    with open(path, "w") as f:
+        for k, v in values.items():
+            if isinstance(v, bool):
+                v = "1" if v else "0"
+            f.write(f'{k} = "{str(v).replace(chr(34), chr(39))}"\n')
+    own(path)
+
+
+def migrate_old_config():
+    """Older versions kept everything, keys included, in
+    config/plugin.fpp-plugin-AmbientWeather.json. Move the settings to FPP's
+    plugin settings file and the keys to plugindata (0600)."""
+    if not os.path.exists(OLD_CONFIG_FILE):
+        return False
+    with open(OLD_CONFIG_FILE) as f:
+        old = json.load(f)
+    creds = {CREDENTIAL_KEYS[k]: old.pop(k, "") for k in CREDENTIAL_KEYS}
+    save_credentials(creds)
+    settings = read_plugin_settings(CONFIG_FILE)
+    settings.update({k: v for k, v in old.items() if k in DEFAULTS})
+    write_plugin_settings(CONFIG_FILE, settings)
+    os.remove(OLD_CONFIG_FILE)
+    return True
+
+
+def save_credentials(creds):
+    os.makedirs(DATA_DIR, exist_ok=True)
+    own(DATA_DIR)
+    fd = os.open(CREDENTIALS_FILE, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, "w") as f:
+        json.dump(creds, f)
+    os.chmod(CREDENTIALS_FILE, 0o600)
+    own(CREDENTIALS_FILE)
+
+
 def load_config():
-    if os.path.exists(CONFIG_FILE):
-        try:
-            with open(CONFIG_FILE) as f:
-                cfg.update(json.load(f))
-        except Exception as e:
-            log(f"Could not read {CONFIG_FILE}: {e} (using defaults)")
-    else:
+    saved = read_plugin_settings(CONFIG_FILE)
+    if not saved and not os.path.exists(CREDENTIALS_FILE):
         log("No settings saved yet - open Content Setup -> "
             "Ambient Weather Display in FPP")
+    cfg.update({k: v for k, v in saved.items() if k in DEFAULTS})
+    try:
+        with open(CREDENTIALS_FILE) as f:
+            creds = json.load(f)
+        for name, key in CREDENTIAL_KEYS.items():
+            cfg[name] = creds.get(key, "")
+    except FileNotFoundError:
+        pass
+    except Exception as e:
+        log(f"Could not read the saved Ambient Weather keys: {e}")
     for k in ("font_size", "scroll_speed", "loop_interval", "border_thickness",
               "border_stripe", "chase_speed", "text_num_colors", "text_color_speed"):
         try:
@@ -635,15 +694,15 @@ def enable_model():
 
 
 def restore_model_state():
-    """Put the model back the way it was before the plugin first drew on it
-    (off if nothing was saved)."""
-    name, state = cfg["model_name"], 0
+    """Put the model back the way it was before the plugin first drew on it.
+    Returns (name, state), or None when the plugin hadn't switched it on
+    (then the model is left alone)."""
     try:
         with open(MODEL_STATE_FILE) as f:
             saved = json.load(f)
-        name, state = saved.get("model") or name, int(saved.get("state", 0))
     except Exception:
-        pass
+        return None
+    name, state = saved.get("model") or cfg["model_name"], int(saved.get("state", 0))
     url = f"{cfg['fpp_host']}/api/overlays/model/{urllib.parse.quote(name)}/state"
     req = urllib.request.Request(url, data=json.dumps({"State": state}).encode(),
                                  headers={"Content-Type": "application/json"}, method="PUT")
@@ -778,18 +837,26 @@ def display(message, offset=0):
 
 
 def turn_off():
-    """Stop any running display, clear what the plugin drew, put the model
-    back the way it was and delete the plugin's images."""
+    """Stop any running display, delete the plugin's images and - only if
+    the plugin switched the model on - clear what it drew and put the model
+    back the way it was. A model the plugin didn't switch on is left alone
+    (it may be showing something else, such as another plugin)."""
     stopped = stop_copies()
     if stopped:
         log(f"Stopped {len(stopped)} running copy(ies)")
+    cleanup_images()
+    if not os.path.exists(MODEL_STATE_FILE):
+        log("The plugin isn't using the model; left it as it is")
+        return
     try:
         fpp_clear()
     finally:
-        cleanup_images()
-        name, state = restore_model_state()
-        words = {0: "off", 1: "on", 2: "on (transparent)", 3: "on (transparent RGB)"}
-        log(f"Model '{name}' put back {words.get(state, f'to state {state}')}")
+        restored = restore_model_state()
+        if restored:
+            name, state = restored
+            words = {0: "off", 1: "on", 2: "on (transparent)", 3: "on (transparent RGB)"}
+            log(f"Display stopped and cleared; model '{name}' put back "
+                f"{words.get(state, f'to state {state}')}")
 
 
 def fetch_message():
@@ -856,6 +923,14 @@ def main():
             cfg["message"] = args[i + 1]
             del args[i:i + 2]
 
+    if "--migrate" in args:                  # used by fpp_install.sh
+        try:
+            if migrate_old_config():
+                log("Moved settings to FPP's plugin settings file and the keys to plugindata")
+        except Exception as e:
+            log(f"Couldn't move the old settings file: {e}")
+        return
+
     if "--restart-running" in args:          # used by fpp_install.sh
         n = restart_loops()
         if n:
@@ -865,7 +940,6 @@ def main():
     if "--off" in args:
         try:
             turn_off()
-            log("Display stopped and cleared")
         except Exception as e:
             log(f"FPP display failed: {e}")
         return

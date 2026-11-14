@@ -14,11 +14,12 @@ anything outside its own folder, update both scripts in the same change:
    - overlay model state (saved in `plugindata/.../model_state.json`, put back
      by `restore_model_state()` on `--off`)
    - `images/ambient_weather_*.png`
-   - `plugindata/fpp-plugin-AmbientWeather/`
+   - `plugindata/fpp-plugin-AmbientWeather/` (keys and model state; kept on
+     a Reinstall when `FPP_PLUGIN_REINSTALL=1`)
    - `logs/plugin-fpp-plugin-AmbientWeather.log*`
    - `scripts/AmbientWeather.sh`
-   - kept on purpose: `config/plugin.fpp-plugin-AmbientWeather.json`
-     (settings and keys)
+   - kept on purpose: `config/plugin.fpp-plugin-AmbientWeather` (settings,
+     no keys)
 3. `fpp_install.sh` must stay safe to re-run, delete files that older
    versions left behind, `chown -R` plugindata to the media owner, and
    restart a running `--loop` (`--restart-running`) so it runs the new code.
@@ -31,6 +32,14 @@ anything outside its own folder, update both scripts in the same change:
    the script at a stand-in.)
 5. Update the "Files it writes and what it changes" section of README.md and
    the `privacy` block in pluginInfo.json if any of this changed.
+
+## FPP's plugin guidelines
+
+Follow FalconChristmas's `PLUGIN_GUIDELINES.md` and keep FPP's plugin check
+clean (`python lint_plugin.py <plugin_dir> fpp-plugin-AmbientWeather` from
+fpp-data's `.github/scripts`). Keys stay in `plugindata/` (0600), never in
+the log or the page; one log file, rotated by FPP; theme-aware Bootstrap
+classes only (no hard-coded colors) in the page.
 
 ## On every change: update the docs
 
