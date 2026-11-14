@@ -1,21 +1,46 @@
 #!/bin/bash
-# fpp-plugin-AmbientWeather install script
-# Adds AmbientWeather.sh to FPP's Scripts folder so it shows up in the
-# "Run Script" command list for playlists and the scheduler.
-
+set -e
+# Ambient Weather Display - install, and every update (FPP runs this after
+# pulling new code, since there is no fpp_upgrade.sh). Runs as root; safe to
+# run again. Everything it creates outside the plugin folder is removed again
+# by scripts/fpp_uninstall.sh - keep the two in step.
+# set -e stops on the first unexpected failure; steps that may fail without
+# harm (a chown on an odd file system, nothing running) end in `|| true`.
 PLUGINDIR="$(cd "$(dirname "$0")/.." && pwd)"
-SCRIPTSDIR="/home/fpp/media/scripts"
+if [ -f "${FPPDIR:-/opt/fpp}/scripts/common" ]; then
+    . "${FPPDIR:-/opt/fpp}/scripts/common" || true
+fi
+MEDIADIR="${MEDIADIR:-/home/fpp/media}"
+LOGDIR="${LOGDIR:-$MEDIADIR/logs}"
+OWNER="$(stat -c '%U:%G' "$MEDIADIR" 2>/dev/null || echo fpp:fpp)"
+DATADIR="$MEDIADIR/plugindata/fpp-plugin-AmbientWeather"
+SCRIPTSDIR="$MEDIADIR/scripts"
 
-chmod +x "${PLUGINDIR}/ambient_weather.py"
+# our data folder (the overlay model's state from before the plugin first
+# drew on it), owned by the media folder's owner so the settings page (web
+# user) can use it too
+mkdir -p "$DATADIR"
+chown -R "$OWNER" "$DATADIR" 2>/dev/null || true
+chmod 755 "$PLUGINDIR/ambient_weather.py" "$PLUGINDIR"/scripts/*.sh 2>/dev/null || true
 
-mkdir -p "${SCRIPTSDIR}"
-cat > "${SCRIPTSDIR}/AmbientWeather.sh" <<EOF
+# AmbientWeather.sh in FPP's Scripts folder, so "Run Script" in playlists and
+# the scheduler can start it
+mkdir -p "$SCRIPTSDIR"
+cat > "$SCRIPTSDIR/AmbientWeather.sh" <<EOF
 #!/bin/bash
-# Installed by fpp-plugin-AmbientWeather - settings are on the plugin page.
+# Installed by fpp-plugin-AmbientWeather - settings are on the plugin page
+# (Content Setup > Ambient Weather Display). Removed when the plugin is
+# uninstalled.
 # Arguments: --loop 60 | --off | --text "Your text {temp} {wind}"
-exec /usr/bin/python3 "${PLUGINDIR}/ambient_weather.py" "\$@"
+exec /usr/bin/python3 "$PLUGINDIR/ambient_weather.py" "\$@"
 EOF
-chmod +x "${SCRIPTSDIR}/AmbientWeather.sh"
-chown fpp:fpp "${SCRIPTSDIR}/AmbientWeather.sh" 2>/dev/null
+chmod 755 "$SCRIPTSDIR/AmbientWeather.sh"
+chown "$OWNER" "$SCRIPTSDIR/AmbientWeather.sh" 2>/dev/null || true
 
-echo "Ambient Weather Display installed. Configure it under Content Setup -> Ambient Weather Display."
+# After an update a running --loop is still the old code: restart it on the
+# new code with the same arguments.
+MEDIADIR="$MEDIADIR" LOGDIR="$LOGDIR" /usr/bin/python3 "$PLUGINDIR/ambient_weather.py" \
+    --restart-running >/dev/null 2>&1 || true
+
+echo "Ambient Weather Display installed. Settings: Content Setup > Ambient Weather Display."
+exit 0

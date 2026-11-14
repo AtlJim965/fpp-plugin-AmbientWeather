@@ -1,18 +1,53 @@
 {
     "repoName": "fpp-plugin-AmbientWeather",
     "name": "Ambient Weather Display",
-    "author": "AtlJim965",
-    "description": "Shows live temperature and wind from an Ambient Weather station on a Pixel Overlay Model (LED matrix).",
+    "author": "Jimson Circle of Lights",
+    "description": "Shows the live temperature and wind speed from your Ambient Weather station on a Pixel Overlay Model (LED matrix): scrolling or centered text in one color or many (per letter, rainbow, gradients), or inside a striped Christmas border. Settings page with Save & Show Now; run it from playlists or the scheduler with Run Script > AmbientWeather.sh. Each update asks Ambient Weather's server (rt.ambientweather.net) for your station's readings using your own API keys; nothing else is sent. Border pictures are written to FPP's images folder as ambient_weather_*.png and cleaned up automatically.",
     "homeURL": "https://github.com/AtlJim965/fpp-plugin-AmbientWeather",
     "srcURL": "https://github.com/AtlJim965/fpp-plugin-AmbientWeather.git",
     "bugURL": "https://github.com/AtlJim965/fpp-plugin-AmbientWeather/issues",
     "allowUpdates": 1,
+    "releaseNotesStyle": "gitHistory",
+    "dependencies": {
+        "packages": [],
+        "python": [],
+        "scripts": [],
+        "plugins": []
+    },
     "versions": [
         {
-            "minFPPVersion": "7.0",
+            "minFPPVersion": "10.0",
             "maxFPPVersion": "0",
             "branch": "main",
-            "sha": ""
+            "sha": "",
+            "platforms": [
+                "Raspberry Pi",
+                "BeagleBone Black",
+                "BeagleBone 64",
+                "Armbian",
+                "Debian",
+                "Ubuntu",
+                "Fedora"
+            ]
         }
-    ]
+    ],
+    "privacy": {
+        "summary": "Gets your weather station's latest readings from Ambient Weather using your own API keys. Sends nothing else.",
+        "sends": [
+            {
+                "to": "rt.ambientweather.net",
+                "what": "Your Ambient Weather API Key and Application Key, to read your own station's latest temperature and wind. No show data.",
+                "why": "to show your station's weather on the matrix",
+                "alwaysOn": false
+            }
+        ],
+        "collects": [],
+        "sensors": [],
+        "remoteAccess": "none",
+        "systemChanges": [
+            "Adds AmbientWeather.sh to FPP's Scripts folder (removed on uninstall)"
+        ],
+        "closedCode": false,
+        "other": "The plugin author keeps no data. Your keys are stored only on your FPP, in config/plugin.fpp-plugin-AmbientWeather.json."
+    }
 }

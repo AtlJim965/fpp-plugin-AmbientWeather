@@ -12,7 +12,7 @@ override them for a single run:
 
     AmbientWeather.sh                          # update once
     AmbientWeather.sh --loop 60                # keep updating every 60s
-    AmbientWeather.sh --off                    # clear + disable overlay
+    AmbientWeather.sh --off                    # stop, clear, put the model back
     AmbientWeather.sh --text "The weather right now is:"
     AmbientWeather.sh --text "It's {temp} with {wind}!" --loop 60
     AmbientWeather.sh --text "Weather now:|{temp}  {wind}"   # | = new line
@@ -20,6 +20,7 @@ override them for a single run:
 
 import json
 import os
+import signal
 import struct
 import sys
 import time
@@ -30,10 +31,16 @@ import urllib.request
 import zlib
 
 PLUGIN_NAME = "fpp-plugin-AmbientWeather"
-MEDIA_DIR = "/home/fpp/media"
+MEDIA_DIR = os.environ.get("MEDIADIR", "/home/fpp/media")
 CONFIG_FILE = f"{MEDIA_DIR}/config/plugin.{PLUGIN_NAME}.json"
 IMAGES_DIR = f"{MEDIA_DIR}/images"
 IMAGE_PREFIX = "ambient_weather_"
+DATA_DIR = f"{MEDIA_DIR}/plugindata/{PLUGIN_NAME}"
+MODEL_STATE_FILE = os.path.join(DATA_DIR, "model_state.json")
+LOG_DIR = os.environ.get("LOGDIR", f"{MEDIA_DIR}/logs")
+LOG_FILE = os.path.join(LOG_DIR, f"plugin-{PLUGIN_NAME}.log")
+LOG_MAX_BYTES = 512 * 1024
+SCRIPT = os.path.abspath(__file__)
 
 DEFAULTS = {
     "api_key": "",
@@ -94,13 +101,27 @@ TEXT_COLOR_MODES = ["Single", "Per Letter", "Per Word", "Per Line", "Random Lett
                     "Random Word", "Gradient Horizontal", "Gradient Vertical",
                     "Gradient Diagonal", "Sparkle", "Chase"]
 
-AMBIENT_URL = "https://rt.ambientweather.net/v1/devices"
+AMBIENT_URL = os.environ.get("AMBIENT_URL", "https://rt.ambientweather.net/v1/devices")
 
 cfg = dict(DEFAULTS)
 
 
 def log(msg):
+    """Print (shown on the settings page / FPP's script output) and append to
+    logs/plugin-fpp-plugin-AmbientWeather.log (kept under ~1 MB)."""
+    line = f"{time.strftime('%Y-%m-%d %H:%M:%S')} [pid {os.getpid()}] {msg}"
     print(time.strftime("%Y-%m-%d %H:%M:%S"), msg, flush=True)
+    try:
+        if os.path.isdir(LOG_DIR):
+            if os.path.exists(LOG_FILE) and os.path.getsize(LOG_FILE) > LOG_MAX_BYTES:
+                os.replace(LOG_FILE, LOG_FILE + ".1")
+            new = not os.path.exists(LOG_FILE)
+            with open(LOG_FILE, "a") as f:
+                f.write(line + "\n")
+            if new:
+                own(LOG_FILE)
+    except Exception:
+        pass
 
 
 def as_bool(v):
@@ -590,6 +611,102 @@ def own(path):
         pass
 
 
+# ------------------------------------------------- overlay model state
+def remember_model_state():
+    """Before the plugin first switches the model on, note whether it was on,
+    so --off / uninstall can put it back. An earlier run's note is kept."""
+    if os.path.exists(MODEL_STATE_FILE):
+        return
+    try:
+        with urllib.request.urlopen(model_url(), timeout=5) as r:
+            state = int(json.load(r).get("isActive", 0) or 0)
+        os.makedirs(DATA_DIR, exist_ok=True)
+        own(DATA_DIR)
+        with open(MODEL_STATE_FILE, "w") as f:
+            json.dump({"model": cfg["model_name"], "state": state}, f)
+        own(MODEL_STATE_FILE)
+    except Exception as e:
+        log(f"Couldn't read the state of model '{cfg['model_name']}': {e}")
+
+
+def enable_model():
+    remember_model_state()
+    fpp_put("/state", {"State": 1})
+
+
+def restore_model_state():
+    """Put the model back the way it was before the plugin first drew on it
+    (off if nothing was saved)."""
+    name, state = cfg["model_name"], 0
+    try:
+        with open(MODEL_STATE_FILE) as f:
+            saved = json.load(f)
+        name, state = saved.get("model") or name, int(saved.get("state", 0))
+    except Exception:
+        pass
+    url = f"{cfg['fpp_host']}/api/overlays/model/{urllib.parse.quote(name)}/state"
+    req = urllib.request.Request(url, data=json.dumps({"State": state}).encode(),
+                                 headers={"Content-Type": "application/json"}, method="PUT")
+    urllib.request.urlopen(req, timeout=10).read()
+    try:
+        os.remove(MODEL_STATE_FILE)
+    except FileNotFoundError:
+        pass
+    return name, state
+
+
+# ------------------------------------------------- other running copies
+def running_copies():
+    """{pid: [args]} of other processes running this script."""
+    found = {}
+    for d in os.listdir("/proc"):
+        if not d.isdigit() or int(d) == os.getpid():
+            continue
+        try:
+            with open(f"/proc/{d}/cmdline", "rb") as f:
+                argv = [a.decode(errors="replace") for a in f.read().split(b"\0") if a]
+        except Exception:
+            continue
+        for i, a in enumerate(argv[:3]):
+            if os.path.abspath(a) == SCRIPT and "python" in os.path.basename(argv[0]):
+                found[int(d)] = argv[i + 1:]
+                break
+    return found
+
+
+def stop_copies(only_loops=False, wait=5):
+    copies = {p: a for p, a in running_copies().items()
+              if not only_loops or "--loop" in a}
+    for pid in copies:
+        try:
+            os.kill(pid, signal.SIGTERM)
+        except ProcessLookupError:
+            pass
+    end = time.time() + wait
+    while time.time() < end and any(os.path.exists(f"/proc/{p}") for p in copies):
+        time.sleep(0.1)
+    for pid in copies:
+        if os.path.exists(f"/proc/{pid}"):
+            try:
+                os.kill(pid, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
+    return copies
+
+
+def restart_loops():
+    """After an update: restart running --loop copies on the new code, with
+    the same arguments they were started with."""
+    import subprocess
+    stopped = stop_copies(only_loops=True)
+    for pid, args in stopped.items():
+        log(f"Restarting the running display (pid {pid}) with the updated code")
+        subprocess.Popen([sys.executable, SCRIPT] + args, stdin=subprocess.DEVNULL,
+                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                         start_new_session=True, env=dict(os.environ))
+    return len(stopped)
+
+
 _frame_no = [0]
 
 
@@ -600,7 +717,7 @@ def show_image(cv):
     with open(path, "wb") as f:
         f.write(cv.png())
     own(path)
-    fpp_put("/state", {"State": 1})
+    enable_model()
     fpp_command("Overlay Model Effect", [
         cfg["model_name"], "Enabled", "Image", "None", "Center", "0", "0", name])
     cleanup_images(keep=name, older_than=5)
@@ -619,7 +736,7 @@ def cleanup_images(keep=None, older_than=0):
 
 def show_text(message):
     scrolling = cfg["position"] != "Center"
-    fpp_put("/state", {"State": 1})
+    enable_model()
     fpp_clear()
     fpp_put("/text", {
         "Message": " ".join(p.strip() for p in message.split("|")),
@@ -661,9 +778,18 @@ def display(message, offset=0):
 
 
 def turn_off():
-    fpp_clear()
-    fpp_put("/state", {"State": 0})
-    cleanup_images()
+    """Stop any running display, clear what the plugin drew, put the model
+    back the way it was and delete the plugin's images."""
+    stopped = stop_copies()
+    if stopped:
+        log(f"Stopped {len(stopped)} running copy(ies)")
+    try:
+        fpp_clear()
+    finally:
+        cleanup_images()
+        name, state = restore_model_state()
+        words = {0: "off", 1: "on", 2: "on (transparent)", 3: "on (transparent RGB)"}
+        log(f"Model '{name}' put back {words.get(state, f'to state {state}')}")
 
 
 def fetch_message():
@@ -730,13 +856,22 @@ def main():
             cfg["message"] = args[i + 1]
             del args[i:i + 2]
 
+    if "--restart-running" in args:          # used by fpp_install.sh
+        n = restart_loops()
+        if n:
+            log(f"Restarted {n} running display(s) on the updated code")
+        return
+
     if "--off" in args:
         try:
             turn_off()
-            log("Overlay cleared and disabled")
+            log("Display stopped and cleared")
         except Exception as e:
             log(f"FPP display failed: {e}")
         return
+
+    # a stop request (--off, uninstall, update) ends a loop quietly
+    signal.signal(signal.SIGTERM, lambda *_: sys.exit(0))
 
     if "--loop" in args:
         i = args.index("--loop")

@@ -285,7 +285,7 @@ awColors();
 <ul>
 <li><i>(none)</i> &ndash; update the matrix once</li>
 <li><code>--loop 60</code> &ndash; keep updating every 60 seconds</li>
-<li><code>--off</code> &ndash; clear the text and turn the overlay off</li>
+<li><code>--off</code> &ndash; stop a running display, clear it and put the overlay model back</li>
 <li><code>--text "The weather right now is:"</code> &ndash; use different wording for this entry only
     (with the border on, <code>|</code> starts a new line)</li>
 </ul>
