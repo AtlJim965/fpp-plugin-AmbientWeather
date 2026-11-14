@@ -11,7 +11,9 @@ heading when the change is released.
 
 ### Added
 
-* A weather icon for the plugin in FPP's Plugin Manager.
+* An icon for the plugin in FPP's Plugin Manager: a backyard weather
+  station and an LED matrix.
+* The plugin is now licensed under the GPL v2 (see `LICENSE`), like FPP.
 * **Help** for the settings page: press **F1** (or FPP's help button) for a
   description of each setting.
 * A log file, `logs/plugin-fpp-plugin-AmbientWeather.log`, so you can see what

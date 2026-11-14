@@ -74,3 +74,7 @@ remove any **Run Script > AmbientWeather.sh** entries first.
 * [Documentation](DOCUMENTATION.md)
 * [Change log](CHANGELOG.md)
 * [Report a problem](https://github.com/AtlJim965/fpp-plugin-AmbientWeather/issues)
+
+## License
+
+GPL v2. See `LICENSE`.
