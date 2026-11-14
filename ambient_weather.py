@@ -44,6 +44,16 @@ DEFAULTS = {
     "font": "FreeSans",
     "font_size": 22,
     "color": "#FFFFFF",
+    # multi-color text (FPP 10.2+ for scrolling text; drawn by this script
+    # when the border is on)
+    "text_color_mode": "Single",
+    "text_palette": "Rainbow",
+    "text_num_colors": 2,
+    "text_color2": "#0000FF",
+    "text_color3": "#00FF00",
+    "text_color4": "#FFFF00",
+    "text_color5": "#FF00FF",
+    "text_color_speed": 0,
     "position": "Center",
     "scroll_speed": 35,
     "show_gust": False,
@@ -67,6 +77,22 @@ PALETTES = {
     "Gold & Silver": ["#FFAA00", "#C8C8C8"],
     "Rainbow": ["#FF0000", "#FF8000", "#FFFF00", "#00FF00", "#0080FF", "#A000FF"],
 }
+
+# Text colour palettes - the same colours FPP's own text effect uses
+TEXT_PALETTES = {
+    "Christmas": ["#FF0000", "#00FF00", "#FFFFFF"],
+    "Halloween": ["#FF6000", "#8000FF", "#00FF00"],
+    "Winter": ["#FFFFFF", "#80D0FF", "#0040FF"],
+    "Fire": ["#FF0000", "#FF6000", "#FFC000", "#FFFF80"],
+    "Ocean": ["#0020FF", "#00A0FF", "#00FFC0"],
+    "Forest": ["#004000", "#00A000", "#80FF00"],
+    "Patriotic": ["#FF0000", "#FFFFFF", "#0000FF"],
+    "Pastel": ["#FFB0C0", "#B0E0FF", "#FFF0A0", "#B0FFC0"],
+    "Party": ["#FF00A0", "#00FFFF", "#FFFF00", "#80FF00", "#FF4000"],
+}
+TEXT_COLOR_MODES = ["Single", "Per Letter", "Per Word", "Per Line", "Random Letter",
+                    "Random Word", "Gradient Horizontal", "Gradient Vertical",
+                    "Gradient Diagonal", "Sparkle", "Chase"]
 
 AMBIENT_URL = "https://rt.ambientweather.net/v1/devices"
 
@@ -92,7 +118,7 @@ def load_config():
         log("No settings saved yet - open Content Setup -> "
             "Ambient Weather Display in FPP")
     for k in ("font_size", "scroll_speed", "loop_interval", "border_thickness",
-              "border_stripe", "chase_speed"):
+              "border_stripe", "chase_speed", "text_num_colors", "text_color_speed"):
         try:
             cfg[k] = int(cfg.get(k))
         except (TypeError, ValueError):
@@ -114,6 +140,45 @@ def border_colors():
     if not pal:
         pal = [c for c in cfg["border_custom_colors"].split(",") if c.strip()]
     return [hex_rgb(c) for c in pal] or [(255, 0, 0), (0, 200, 60)]
+
+
+def hue_rgb(h):
+    """Full-brightness colour at position h (0..1) around the colour wheel."""
+    import colorsys
+    r, g, b = colorsys.hsv_to_rgb(h % 1.0, 1.0, 1.0)
+    return (int(r * 255), int(g * 255), int(b * 255))
+
+
+def text_palette():
+    """List of RGB colours, or None for Rainbow."""
+    name = cfg.get("text_palette", "Rainbow")
+    if name == "Rainbow":
+        return None
+    if name in TEXT_PALETTES:
+        return [hex_rgb(c) for c in TEXT_PALETTES[name]]
+    n = max(1, min(5, int(cfg.get("text_num_colors") or 2)))
+    keys = ["color", "text_color2", "text_color3", "text_color4", "text_color5"][:n]
+    return [hex_rgb(cfg.get(k)) for k in keys]
+
+
+def pick(pal, i, count):
+    """i-th of count colours from a palette (rainbow spreads over the wheel)."""
+    if pal is None:
+        return hue_rgb(i / max(1, count))
+    return pal[i % len(pal)]
+
+
+def blend(pal, t):
+    """Colour at t (0..1) along a smooth blend through the palette."""
+    if pal is None:
+        return hue_rgb(t * 0.85)            # stop short of wrapping back to red
+    if len(pal) == 1:
+        return pal[0]
+    t = min(max(t, 0.0), 1.0) * (len(pal) - 1)
+    i = min(int(t), len(pal) - 2)
+    f = t - i
+    a, b = pal[i], pal[i + 1]
+    return tuple(int(a[k] + (b[k] - a[k]) * f) for k in range(3))
 
 
 # ---------------------------------------------------------------- weather
@@ -253,14 +318,18 @@ class Canvas:
             i = (y * self.w + x) * 3
             self.buf[i:i + 3] = bytes(c)
 
-    def text(self, x, y, s, c, scale=1):
-        for ch in s:
+    def text(self, x, y, s, c, scale=1, start=0):
+        """Draw text. c is an (r,g,b) colour or a function
+        c(char_number, px, py) -> (r,g,b) for multi-colour text.
+        start = how many characters came before this line."""
+        for n, ch in enumerate(s):
             for gy, row in enumerate(FONT5x7.get(ch, FONT5x7[" "])):
                 for gx, bit in enumerate(row):
                     if bit == "#":
                         for dy in range(scale):
                             for dx in range(scale):
-                                self.set(x + gx * scale + dx, y + gy * scale + dy, c)
+                                px, py = x + gx * scale + dx, y + gy * scale + dy
+                                self.set(px, py, c(start + n, px, py) if callable(c) else c)
             x += advance(ch, scale)
 
     def png(self):
@@ -364,12 +433,71 @@ def draw_frame(message, W, H, offset=0):
     scales = [s for _, s in lines]
     gap = (2 * max(1, min(scales))) if len(lines) > 1 else 0
     y = y0 + max(0, (ih - block_height(scales)) // 2)
-    color = hex_rgb(cfg["color"])
+    color = text_colorizer(lines, x0, y0, iw, ih)
+    start = 0
     for text, s in lines:
         x = x0 + max(0, (iw - text_width(text, s)) // 2)
-        cv.text(x, y, text, color, s)
+        cv.text(x, y, text, color, s, start)
+        start += len(text)
         y += 7 * s + gap
     return cv
+
+
+def text_colorizer(lines, x0, y0, iw, ih):
+    """Colour (or colour function) for the border-mode pixel text, matching
+    FPP's text colour modes. Sparkle and Chase are animated in FPP; here they
+    are drawn as Per Letter."""
+    import random
+    mode = cfg.get("text_color_mode", "Single")
+    if mode not in TEXT_COLOR_MODES or mode == "Single":
+        return hex_rgb(cfg["color"])
+    pal = text_palette()
+    full = "".join(t for t, _ in lines)
+
+    # which letter / word / line each character belongs to (spaces don't count)
+    letter_no, word_no, line_no = [], [], []
+    letters = words = 0
+    in_word = False
+    for li, (t, _) in enumerate(lines):
+        in_word = False
+        for ch in t:
+            if ch == " ":
+                letter_no.append(-1)
+                word_no.append(-1)
+                in_word = False
+            else:
+                if not in_word:
+                    words += 1
+                    in_word = True
+                letter_no.append(letters)
+                word_no.append(words - 1)
+                letters += 1
+            line_no.append(li)
+    rnd = random.Random(full)                      # same message -> same colours
+    rand_letters = [rnd.randrange(1 << 30) for _ in range(letters)]
+    rand_words = [rnd.randrange(1 << 30) for _ in range(words)]
+
+    def rand_pick(r, count):
+        return hue_rgb((r % 1000) / 1000) if pal is None else pal[r % len(pal)]
+
+    if mode in ("Per Letter", "Sparkle", "Chase"):
+        return lambda i, px, py: pick(pal, max(letter_no[i], 0), letters)
+    if mode == "Per Word":
+        return lambda i, px, py: pick(pal, max(word_no[i], 0), words)
+    if mode == "Per Line":
+        return lambda i, px, py: pick(pal, line_no[i], len(lines))
+    if mode == "Random Letter":
+        return lambda i, px, py: rand_pick(rand_letters[max(letter_no[i], 0)], letters)
+    if mode == "Random Word":
+        return lambda i, px, py: rand_pick(rand_words[max(word_no[i], 0)], words)
+    if mode == "Gradient Horizontal":
+        return lambda i, px, py: blend(pal, (px - x0) / max(1, iw - 1))
+    if mode == "Gradient Vertical":
+        return lambda i, px, py: blend(pal, (py - y0) / max(1, ih - 1))
+    if mode == "Gradient Diagonal":
+        return lambda i, px, py: blend(pal, ((px - x0) / max(1, iw - 1) +
+                                             (py - y0) / max(1, ih - 1)) / 2)
+    return hex_rgb(cfg["color"])
 
 
 # -------------------------------------------------------------------- FPP
@@ -502,7 +630,26 @@ def show_text(message):
         "Position": cfg["position"],
         "PixelsPerSecond": cfg["scroll_speed"] if scrolling else 0,
         "AutoEnable": False,
+        **fpp_color_args(),
     })
+
+
+def fpp_color_args():
+    """FPP 10.2+ text colour options. Left out entirely for Single so older
+    FPP versions get exactly the request they always did."""
+    mode = cfg.get("text_color_mode", "Single")
+    if mode == "Single" or mode not in TEXT_COLOR_MODES:
+        return {}
+    return {
+        "ColorMode": mode,
+        "Palette": cfg.get("text_palette", "Rainbow"),
+        "NumColors": str(max(1, min(5, int(cfg.get("text_num_colors") or 2)))),
+        "Color2": cfg.get("text_color2", "#0000FF"),
+        "Color3": cfg.get("text_color3", "#00FF00"),
+        "Color4": cfg.get("text_color4", "#FFFF00"),
+        "Color5": cfg.get("text_color5", "#FF00FF"),
+        "ColorSpeed": str(max(0, min(100, int(cfg.get("text_color_speed") or 0)))),
+    }
 
 
 def display(message, offset=0):

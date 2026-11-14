@@ -31,6 +31,17 @@ Add a **Run Script** command → `AmbientWeather.sh`, with optional arguments:
 | `--off` | Clear the text and turn the overlay off |
 | `--text "Your text {temp} {wind}"` | Different wording for this entry |
 
+## Multi-color text
+
+**Text colors** on the settings page can make each letter, word or line a
+different color, a random color per letter or word, or a gradient, using a
+palette (Rainbow, Christmas, Winter, Fire, Ocean, Forest, Patriotic, Pastel,
+Party, Halloween) or up to five colors of your own. For scrolling text this
+uses FPP's own text colors (FPP 10.2 or newer), which also offer Sparkle,
+Chase and a *Color movement* setting that makes the colors flow through the
+letters. With the border on, the plugin draws the colors itself (Sparkle and
+Chase are drawn as one color per letter there).
+
 ## Christmas border
 
 Turn on **Show border** on the settings page for a striped border on all four

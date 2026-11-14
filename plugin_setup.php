@@ -13,6 +13,14 @@ $awDefaults = array(
     "font"            => "FreeSans",
     "font_size"       => 22,
     "color"           => "#FFFFFF",
+    "text_color_mode"  => "Single",
+    "text_palette"     => "Rainbow",
+    "text_num_colors"  => 2,
+    "text_color2"      => "#0000FF",
+    "text_color3"      => "#00FF00",
+    "text_color4"      => "#FFFF00",
+    "text_color5"      => "#FF00FF",
+    "text_color_speed" => 0,
     "position"        => "Center",
     "scroll_speed"    => 35,
     "show_gust"       => false,
@@ -55,12 +63,15 @@ if ($_SERVER["REQUEST_METHOD"] === "POST" && isset($_POST["aw_action"])) {
     if ($action === "save" || $action === "save_show") {
         foreach (array("api_key", "application_key", "station_mac", "fpp_host",
                        "model_name", "font", "color", "position", "message",
-                       "border_palette", "border_custom_colors") as $k) {
+                       "border_palette", "border_custom_colors",
+                       "text_color_mode", "text_palette", "text_color2", "text_color3",
+                       "text_color4", "text_color5") as $k) {
             if (isset($_POST[$k]))
                 $cfg[$k] = trim($_POST[$k]);
         }
         foreach (array("font_size", "scroll_speed", "loop_interval",
-                       "border_thickness", "border_stripe", "chase_speed") as $k) {
+                       "border_thickness", "border_stripe", "chase_speed",
+                       "text_num_colors", "text_color_speed") as $k) {
             if (isset($_POST[$k]))
                 $cfg[$k] = intval($_POST[$k]);
         }
@@ -119,6 +130,22 @@ $palettes = array("Christmas" => "Christmas (red, white, green)",
                   "Winter" => "Winter (blues & white)", "Gold & Silver" => "Gold & Silver",
                   "Rainbow" => "Rainbow", "Custom" => "Custom (colors below)");
 
+$textModes = array(
+    "Single"              => "One color",
+    "Per Letter"          => "Each letter a different color",
+    "Per Word"            => "Each word a different color",
+    "Per Line"            => "Each line a different color",
+    "Random Letter"       => "Random color per letter",
+    "Random Word"         => "Random color per word",
+    "Gradient Horizontal" => "Gradient, left to right",
+    "Gradient Vertical"   => "Gradient, top to bottom",
+    "Gradient Diagonal"   => "Gradient, corner to corner",
+    "Sparkle"             => "Sparkle (scrolling text only)",
+    "Chase"               => "Chase (scrolling text only)",
+);
+$textPalettes = array("Rainbow", "Christmas", "Winter", "Fire", "Ocean", "Forest",
+                      "Patriotic", "Pastel", "Party", "Halloween", "Custom");
+
 $positions = array(
     "Center" => "Center (no scrolling)",
     "R2L"    => "Scroll right to left",
@@ -159,8 +186,44 @@ $positions = array(
 <tr><td>Font</td><td><?php awSelectOrText("font", $cfg["font"], $fonts); ?></td></tr>
 <tr><td>Font size</td>
     <td><input type="number" name="font_size" value="<?= h($cfg["font_size"]) ?>" min="6" max="64"></td></tr>
-<tr><td>Color</td>
-    <td><input type="color" name="color" value="<?= h($cfg["color"]) ?>"></td></tr>
+<tr><td>Text colors</td>
+    <td><select name="text_color_mode" id="awMode" onchange="awColors()">
+    <?php foreach ($textModes as $k => $label)
+        printf("<option value='%s'%s>%s</option>", h($k), $cfg["text_color_mode"] == $k ? " selected" : "", h($label)); ?>
+    </select></td></tr>
+<tr class="awMulti"><td>Color palette</td>
+    <td><select name="text_palette" id="awPalette" onchange="awColors()">
+    <?php foreach ($textPalettes as $k)
+        printf("<option value='%s'%s>%s</option>", h($k), $cfg["text_palette"] == $k ? " selected" : "", h($k == "Custom" ? "Custom (pick below)" : $k)); ?>
+    </select></td></tr>
+<tr id="awColorRow"><td>Color<span class="awCustom">s</span></td>
+    <td><input type="color" name="color" value="<?= h($cfg["color"]) ?>">
+    <span class="awCustom">
+    <?php for ($c = 2; $c <= 5; $c++)
+        printf("<input type='color' class='awExtra' name='text_color%d' value='%s'>", $c, h($cfg["text_color$c"])); ?>
+    &nbsp;use the first
+    <select name="text_num_colors" id="awNum" onchange="awColors()">
+    <?php for ($c = 1; $c <= 5; $c++)
+        printf("<option%s>%d</option>", intval($cfg["text_num_colors"]) == $c ? " selected" : "", $c); ?>
+    </select> colors</span></td></tr>
+<tr class="awMulti"><td>Color movement</td>
+    <td><input type="range" name="text_color_speed" min="0" max="100" value="<?= h($cfg["text_color_speed"]) ?>"
+         oninput="document.getElementById('awSpeedVal').textContent=this.value">
+    <span id="awSpeedVal"><?= h($cfg["text_color_speed"]) ?></span>
+    <small>0 = colors stay put; higher = colors flow through the letters (scrolling text only;
+    needed for Sparkle and Chase)</small></td></tr>
+<script>
+function awColors() {
+    var multi = document.getElementById("awMode").value != "Single";
+    var custom = multi && document.getElementById("awPalette").value == "Custom";
+    document.querySelectorAll(".awMulti").forEach(function (e) { e.style.display = multi ? "" : "none"; });
+    document.querySelectorAll(".awCustom").forEach(function (e) { e.style.display = custom ? "" : "none"; });
+    document.getElementById("awColorRow").style.display = (!multi || custom) ? "" : "none";
+    var n = parseInt(document.getElementById("awNum").value);
+    document.querySelectorAll(".awExtra").forEach(function (e, i) { e.style.display = (i + 2 <= n) ? "" : "none"; });
+}
+awColors();
+</script>
 <tr><td>Position</td>
     <td><select name="position">
     <?php foreach ($positions as $k => $label)
